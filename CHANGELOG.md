@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7
+
+- Added optional dark mode to `chart.py` with `--dark`.
+- Added hover cursor information for candlestick timestamp, open, high, low, and close values.
+- Improved chart spacing, gridlines, and candle colour readability.
+
+## v0.6
+
+- Added `chart.py` for basic candlestick chart viewing.
+- Added 1-minute candlesticks with time on the x-axis and price on the y-axis.
+- Updated documentation with chart viewer usage.
+
 ## v0.5
 
 - Added `explorer.py` for basic daily CSV exploration.

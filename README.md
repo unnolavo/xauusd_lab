@@ -4,7 +4,7 @@ XAUUSD Lab is a long-term Python research project for studying XAU/USD, which is
 
 The project will grow step by step into a research platform for downloading historical market data, storing it cleanly, analysing price behaviour, testing trading strategies, and eventually building a desktop research application.
 
-Current version: **v0.5**
+Current version: **v0.7**
 
 ## Current Features
 
@@ -75,6 +75,34 @@ data_raw/XAUUSD_2024-01-26_1min_BID_UTC.csv
 
 It prints the open, high, low, close, daily range, time of high, time of low, total candles, and average volume.
 
+### Chart Viewer
+
+Use `chart.py` to display a candlestick chart for one downloaded CSV file.
+
+```powershell
+python chart.py 2024-01-26
+```
+
+You can also open the chart in dark mode:
+
+```powershell
+python chart.py 2024-01-26 --dark
+```
+
+For that command, the chart viewer loads:
+
+```text
+data_raw/XAUUSD_2024-01-26_1min_BID_UTC.csv
+```
+
+The chart shows 1-minute candlesticks with time on the x-axis and price on the y-axis. Hover near a candle to see its timestamp, open, high, low, and close values.
+
+The chart viewer uses `matplotlib`. If needed, install it with:
+
+```powershell
+python -m pip install matplotlib
+```
+
 ## Output Files
 
 Downloaded CSV files are saved in the `data_raw/` folder.
@@ -102,6 +130,6 @@ The downloader retries each failed day up to 3 times before writing it to the fa
 - Future: Improve downloader configuration and validation.
 - Future: Download longer historical periods safely.
 - Future: Organise raw data into a clean master dataset.
-- Future: Add more analysis and exploration scripts.
+- Future: Add more analysis, exploration, and charting tools.
 - Future: Build and test simple trading strategies.
 - Future: Create a desktop research application.
