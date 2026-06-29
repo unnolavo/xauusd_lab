@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.7.1
+
+- Added shared detection for leading/trailing market-closed placeholder rows.
+- Updated `chart.py` to skip edge placeholder candles without editing raw CSV files.
+- Updated `explorer.py` to report total rows, active candles, and inactive placeholder rows.
+- Added regression tests for January 26, 2024 market-close placeholders and chart autoscaling.
+
 ## v0.7
 
 - Added optional dark mode to `chart.py` with `--dark`.

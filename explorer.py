@@ -12,6 +12,8 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+from candle_filters import is_flat_zero_volume_candle, remove_edge_inactive_placeholders
+
 
 SYMBOL = "XAUUSD"
 TIMEFRAME_LABEL = "1min"
@@ -42,6 +44,17 @@ def load_candles(csv_path: Path) -> list[dict[str, str]]:
         return list(reader)
 
 
+def is_inactive_placeholder_row(candle: dict[str, str]) -> bool:
+    """Return True if a CSV row is a flat, zero-volume placeholder row."""
+    return is_flat_zero_volume_candle(
+        float(candle["open"]),
+        float(candle["high"]),
+        float(candle["low"]),
+        float(candle["close"]),
+        float(candle["volume"]),
+    )
+
+
 def time_from_timestamp(timestamp: str) -> str:
     """Get only the HH:MM:SS part from a timestamp."""
     # The downloader writes timestamps like "2024-01-26 13:45:00".
@@ -53,8 +66,17 @@ def calculate_daily_statistics(candles: list[dict[str, str]]) -> dict[str, float
     if not candles:
         raise ValueError("The CSV file does not contain any candle rows.")
 
-    first_candle = candles[0]
-    last_candle = candles[-1]
+    active_result = remove_edge_inactive_placeholders(
+        candles,
+        is_inactive_placeholder_row,
+    )
+    active_candles = active_result.active_rows
+
+    if not active_candles:
+        raise ValueError("The CSV file does not contain any active candle rows.")
+
+    first_candle = active_candles[0]
+    last_candle = active_candles[-1]
 
     open_price = float(first_candle["open"])
     close_price = float(last_candle["close"])
@@ -66,7 +88,7 @@ def calculate_daily_statistics(candles: list[dict[str, str]]) -> dict[str, float
 
     total_volume = 0.0
 
-    for candle in candles:
+    for candle in active_candles:
         candle_high = float(candle["high"])
         candle_low = float(candle["low"])
         candle_volume = float(candle["volume"])
@@ -81,11 +103,14 @@ def calculate_daily_statistics(candles: list[dict[str, str]]) -> dict[str, float
             low_price = candle_low
             time_of_low = time_from_timestamp(candle["timestamp_utc"])
 
-    total_candles = len(candles)
-    average_volume = total_volume / total_candles
+    active_candles_count = len(active_candles)
+    average_volume = total_volume / active_candles_count
     daily_range = high_price - low_price
 
     return {
+        "total_csv_rows": len(candles),
+        "active_candles": active_candles_count,
+        "inactive_placeholder_rows": active_result.inactive_count,
         "open_price": open_price,
         "high_price": high_price,
         "low_price": low_price,
@@ -93,7 +118,6 @@ def calculate_daily_statistics(candles: list[dict[str, str]]) -> dict[str, float
         "daily_range": daily_range,
         "time_of_high": time_of_high,
         "time_of_low": time_of_low,
-        "total_candles": total_candles,
         "average_volume": average_volume,
     }
 
@@ -111,8 +135,13 @@ def print_statistics(day: date, csv_path: Path, statistics: dict[str, float | in
     print(f"Daily range: ${statistics['daily_range']:.3f}")
     print(f"Time of high: {statistics['time_of_high']} UTC")
     print(f"Time of low: {statistics['time_of_low']} UTC")
-    print(f"Total candles: {statistics['total_candles']}")
-    print(f"Average volume: {statistics['average_volume']:.8f}")
+    print(f"Total CSV rows: {statistics['total_csv_rows']}")
+    print(f"Active candles: {statistics['active_candles']}")
+    print(
+        "Inactive market-closed placeholder rows: "
+        f"{statistics['inactive_placeholder_rows']}"
+    )
+    print(f"Average volume (active candles): {statistics['average_volume']:.8f}")
 
 
 def print_usage() -> None:

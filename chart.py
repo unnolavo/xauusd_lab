@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from candle_filters import is_flat_zero_volume_candle, remove_edge_inactive_placeholders
+
 # Matplotlib is imported later, after we know the CSV file exists. This keeps
 # missing-file errors fast and easy to understand.
 mdates = None
@@ -40,6 +42,7 @@ class Candle:
     high: float
     low: float
     close: float
+    volume: float
 
 
 @dataclass
@@ -103,6 +106,7 @@ def load_candles(csv_path: Path) -> list[Candle]:
                 high=float(row["high"]),
                 low=float(row["low"]),
                 close=float(row["close"]),
+                volume=float(row["volume"]),
             )
             candles.append(candle)
 
@@ -110,6 +114,22 @@ def load_candles(csv_path: Path) -> list[Candle]:
         raise ValueError("The CSV file does not contain any candle rows.")
 
     return candles
+
+
+def is_inactive_placeholder_candle(candle: Candle) -> bool:
+    """Return True if a candle is a flat, zero-volume placeholder row."""
+    return is_flat_zero_volume_candle(
+        candle.open,
+        candle.high,
+        candle.low,
+        candle.close,
+        candle.volume,
+    )
+
+
+def get_active_candle_result(candles: list[Candle]):
+    """Remove only leading/trailing inactive placeholders from chart data."""
+    return remove_edge_inactive_placeholders(candles, is_inactive_placeholder_candle)
 
 
 def check_matplotlib_is_available() -> bool:
@@ -359,11 +379,17 @@ def create_chart_figure(day: date, candles: list[Candle], dark_mode: bool = Fals
     if not matplotlib_is_loaded():
         raise RuntimeError("Matplotlib was not loaded before creating the chart.")
 
+    active_result = get_active_candle_result(candles)
+    active_candles = active_result.active_rows
+
+    if not active_candles:
+        raise ValueError("The CSV file does not contain any active candle rows.")
+
     style = get_chart_style(dark_mode)
     fig, ax = plt.subplots(figsize=(15, 8))
     fig.patch.set_facecolor(style.figure_background)
 
-    draw_candles(ax, candles, style)
+    draw_candles(ax, active_candles, style)
 
     ax.set_title(f"XAU/USD 1-Minute BID Candlestick Chart - {day:%Y-%m-%d}")
     ax.set_xlabel("Time (UTC)")
@@ -373,13 +399,16 @@ def create_chart_figure(day: date, candles: list[Candle], dark_mode: bool = Fals
     ax.xaxis.set_minor_locator(mdates.HourLocator(interval=1))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
 
-    x_limits = (candles[0].timestamp, candles[-1].timestamp + timedelta(minutes=1))
-    y_limits = calculate_price_limits(candles)
+    x_limits = (
+        active_candles[0].timestamp,
+        active_candles[-1].timestamp + timedelta(minutes=1),
+    )
+    y_limits = calculate_price_limits(active_candles)
     ax.set_xlim(*x_limits)
     ax.set_ylim(*y_limits)
 
     style_chart_axes(ax, style)
-    add_hover_cursor(fig, ax, candles, style)
+    add_hover_cursor(fig, ax, active_candles, style)
 
     # Hover artists must not expand the chart to zero or any other value.
     ax.set_xlim(*x_limits)

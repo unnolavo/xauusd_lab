@@ -26,8 +26,9 @@ class ChartAutoscaleRegressionTest(unittest.TestCase):
         cls.candles = chart.load_candles(csv_path)
 
     def test_initial_y_axis_uses_candle_prices_only(self):
-        actual_low = min(candle.low for candle in self.candles)
-        actual_high = max(candle.high for candle in self.candles)
+        active_result = chart.get_active_candle_result(self.candles)
+        actual_low = min(candle.low for candle in active_result.active_rows)
+        actual_high = max(candle.high for candle in active_result.active_rows)
         actual_range = actual_high - actual_low
 
         for dark_mode in (False, True):
@@ -58,6 +59,17 @@ class ChartAutoscaleRegressionTest(unittest.TestCase):
         fig.canvas.callbacks.process("motion_notify_event", event)
 
         self.assertEqual(ax.get_ylim(), manual_y_limits)
+        chart.plt.close(fig)
+
+    def test_chart_uses_active_time_window(self):
+        fig, ax = chart.create_chart_figure(self.day, self.candles, dark_mode=False)
+
+        x_min, x_max = ax.get_xlim()
+        start_time = chart.mdates.num2date(x_min).replace(tzinfo=None)
+        end_time = chart.mdates.num2date(x_max).replace(tzinfo=None)
+
+        self.assertEqual(start_time.strftime("%H:%M"), "00:00")
+        self.assertEqual(end_time.strftime("%H:%M"), "22:00")
         chart.plt.close(fig)
 
 
