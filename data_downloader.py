@@ -2,6 +2,7 @@
 Download XAU/USD 1-minute BID candle data from Dukascopy.
 
 Usage:
+    python data_downloader.py
     python data_downloader.py 2024-01-02
     python data_downloader.py 2024-01-02 2024-01-31
 
@@ -12,6 +13,7 @@ Each CSV file is saved into the data_raw folder as:
 from __future__ import annotations
 
 import csv
+import json
 import lzma
 import struct
 import sys
@@ -22,7 +24,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-# Project settings for Version 0.3.
+# Project settings for Version 0.4.
 SYMBOL = "XAUUSD"
 PRICE_SIDE = "BID"
 TIMEFRAME = "min_1"
@@ -44,6 +46,7 @@ CANDLE_RECORD = struct.Struct(">5if")
 
 # Save raw downloaded files next to this script, inside data_raw.
 PROJECT_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = PROJECT_DIR / "config.json"
 DATA_RAW_DIR = PROJECT_DIR / "data_raw"
 LOGS_DIR = PROJECT_DIR / "logs"
 FAILED_DOWNLOADS_PATH = LOGS_DIR / "failed_downloads.txt"
@@ -73,6 +76,64 @@ def parse_date_arguments(arguments: list[str]) -> tuple[date, date]:
         raise ValueError("The end date must be the same as or after the start date.")
 
     return start_day, end_day
+
+
+def read_config_value(config: dict, key: str) -> str:
+    """Read one text value from config.json and give a clear error if missing."""
+    value = config.get(key)
+
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"config.json must contain a text value for '{key}'.")
+
+    return value.strip()
+
+
+def load_config() -> dict:
+    """Load downloader settings from config.json.
+
+    The config file is useful when you want to run the same date range many
+    times without typing the dates in the terminal.
+    """
+    if not CONFIG_PATH.exists():
+        raise ValueError(f"Could not find config file: {CONFIG_PATH}")
+
+    try:
+        with CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+            config = json.load(config_file)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"config.json is not valid JSON: {error}") from error
+
+    if not isinstance(config, dict):
+        raise ValueError("config.json must contain a JSON object.")
+
+    return config
+
+
+def apply_config_settings(config: dict) -> None:
+    """Use symbol, price side, and timeframe settings from config.json."""
+    global SYMBOL, PRICE_SIDE, TIMEFRAME
+
+    SYMBOL = read_config_value(config, "symbol")
+    PRICE_SIDE = read_config_value(config, "price_side")
+    TIMEFRAME = read_config_value(config, "timeframe")
+
+
+def get_download_dates(arguments: list[str]) -> tuple[date, date, str]:
+    """Choose dates from the command line or from config.json."""
+    if arguments:
+        start_day, end_day = parse_date_arguments(arguments)
+        return start_day, end_day, "command line"
+
+    config = load_config()
+    apply_config_settings(config)
+
+    start_day = parse_day(read_config_value(config, "start_date"))
+    end_day = parse_day(read_config_value(config, "end_date"))
+
+    if end_day < start_day:
+        raise ValueError("config.json end_date must be the same as or after start_date.")
+
+    return start_day, end_day, "config.json"
 
 
 def each_day(start_day: date, end_day: date):
@@ -106,7 +167,7 @@ def build_output_path(day: date) -> Path:
 def download_bi5(url: str) -> bytes:
     """Download Dukascopy's compressed .bi5 file and return its bytes."""
     # A user agent helps identify this small research project to the server.
-    request = Request(url, headers={"User-Agent": "Mozilla/5.0 (XAUUSD-Lab/0.3)"})
+    request = Request(url, headers={"User-Agent": "Mozilla/5.0 (XAUUSD-Lab/0.4)"})
 
     with urlopen(request, timeout=30) as response:
         bi5_data = response.read()
@@ -244,10 +305,12 @@ def download_one_day(day: date) -> bool:
 def print_usage() -> None:
     """Print command examples for the downloader."""
     print("Usage:")
+    print("  python data_downloader.py")
     print("  python data_downloader.py YYYY-MM-DD")
     print("  python data_downloader.py YYYY-MM-DD YYYY-MM-DD")
     print()
     print("Examples:")
+    print("  python data_downloader.py")
     print("  python data_downloader.py 2024-01-02")
     print("  python data_downloader.py 2024-01-02 2024-01-31")
 
@@ -255,7 +318,7 @@ def print_usage() -> None:
 def main() -> int:
     """Run the downloader from the command line."""
     try:
-        start_day, end_day = parse_date_arguments(sys.argv[1:])
+        start_day, end_day, date_source = get_download_dates(sys.argv[1:])
     except ValueError as error:
         print(f"Date error: {error}")
         print()
@@ -276,6 +339,7 @@ def main() -> int:
     print("Timeframe: 1-minute candles")
     print(f"Price side: {PRICE_SIDE}")
     print("Timezone: UTC")
+    print(f"Date source: {date_source}")
     print(f"Start date: {start_day:%Y-%m-%d}")
     print(f"End date: {end_day:%Y-%m-%d}")
     print(f"Days to process: {total_days}")

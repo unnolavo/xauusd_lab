@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.5
+
+- Added `explorer.py` for basic daily CSV exploration.
+- Added open, high, low, close, daily range, high/low time, candle count, and average volume output.
+- Updated documentation with explorer usage.
+
+## v0.4
+
+- Added `config.json` for default downloader settings.
+- Added no-argument mode: `python data_downloader.py`.
+- Kept command-line date mode working as before.
+- Updated documentation for config-file and command-line usage.
+
 ## v0.3
 
 - Added retry logic for temporary Dukascopy failures such as HTTP 503.

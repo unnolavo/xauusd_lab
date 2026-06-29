@@ -4,11 +4,13 @@ XAUUSD Lab is a long-term Python research project for studying XAU/USD, which is
 
 The project will grow step by step into a research platform for downloading historical market data, storing it cleanly, analysing price behaviour, testing trading strategies, and eventually building a desktop research application.
 
-Current version: **v0.3**
+Current version: **v0.5**
 
-## Current Feature
+## Current Features
 
-The current tool is a Dukascopy downloader for:
+### Downloader
+
+The downloader gets Dukascopy data for:
 
 - XAU/USD
 - 1-minute candles
@@ -18,6 +20,30 @@ The current tool is a Dukascopy downloader for:
 It downloads Dukascopy `.bi5` files, converts them into CSV format, and saves the CSV files locally.
 
 ## How To Run
+
+You can run the downloader in two ways.
+
+### Option 1: Use config.json
+
+If you run the script without dates, it reads the date range and market settings from `config.json`:
+
+```powershell
+python data_downloader.py
+```
+
+The current `config.json` file contains:
+
+```json
+{
+  "start_date": "2024-01-01",
+  "end_date": "2024-01-31",
+  "symbol": "XAUUSD",
+  "price_side": "BID",
+  "timeframe": "min_1"
+}
+```
+
+### Option 2: Type Dates In The Terminal
 
 Download one day:
 
@@ -32,6 +58,22 @@ python data_downloader.py 2024-01-02 2024-01-31
 ```
 
 The date range includes both the start date and the end date.
+
+### Data Explorer
+
+Use `explorer.py` to print basic daily statistics for one downloaded CSV file.
+
+```powershell
+python explorer.py 2024-01-26
+```
+
+For that command, the explorer loads:
+
+```text
+data_raw/XAUUSD_2024-01-26_1min_BID_UTC.csv
+```
+
+It prints the open, high, low, close, daily range, time of high, time of low, total candles, and average volume.
 
 ## Output Files
 
@@ -53,13 +95,13 @@ Failed downloads are logged in:
 logs/failed_downloads.txt
 ```
 
-In v0.3, the downloader retries each failed day up to 3 times before writing it to the failed download log.
+The downloader retries each failed day up to 3 times before writing it to the failed download log.
 
 ## Roadmap
 
-- v0.4: Improve downloader configuration and validation.
+- Future: Improve downloader configuration and validation.
 - Future: Download longer historical periods safely.
 - Future: Organise raw data into a clean master dataset.
-- Future: Add basic analysis scripts.
+- Future: Add more analysis and exploration scripts.
 - Future: Build and test simple trading strategies.
 - Future: Create a desktop research application.
