@@ -1,0 +1,9 @@
+# Downloaded market data
+data_raw/*.csv
+
+# Runtime logs
+logs/
+
+# Python cache files
+__pycache__/
+*.pyc
