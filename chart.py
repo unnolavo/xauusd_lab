@@ -11,16 +11,15 @@ Usage:
 from __future__ import annotations
 
 import csv
-import json
 import math
 import sys
 from bisect import bisect_left
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from candle_filters import is_flat_zero_volume_candle, remove_edge_inactive_placeholders
+from session_tools import SessionWindow, get_session_windows
 
 # Matplotlib is imported later, after we know the CSV file exists. This keeps
 # missing-file errors fast and easy to understand.
@@ -35,7 +34,6 @@ PRICE_SIDE = "BID"
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_RAW_DIR = PROJECT_DIR / "data_raw"
-SESSIONS_CONFIG_PATH = PROJECT_DIR / "sessions.json"
 
 
 @dataclass
@@ -71,27 +69,6 @@ class ChartArguments:
     day: date
     dark_mode: bool
     show_sessions: bool
-
-
-@dataclass
-class SessionDefinition:
-    """One configurable trading-session research window."""
-
-    name: str
-    timezone_name: str
-    local_start: time
-    local_end: time
-    color: str
-
-
-@dataclass
-class SessionWindow:
-    """One session window converted into naive UTC timestamps for plotting."""
-
-    name: str
-    start_utc: datetime
-    end_utc: datetime
-    color: str
 
 
 def parse_day(day_text: str) -> date:
@@ -152,107 +129,6 @@ def load_candles(csv_path: Path) -> list[Candle]:
         raise ValueError("The CSV file does not contain any candle rows.")
 
     return candles
-
-
-def parse_session_time(time_text: str) -> time:
-    """Convert session time text like '09:00' into a Python time."""
-    try:
-        return datetime.strptime(time_text, "%H:%M").time()
-    except ValueError as error:
-        raise ValueError(f"Session time must use HH:MM format: {time_text}") from error
-
-
-def load_session_definitions(
-    config_path: Path = SESSIONS_CONFIG_PATH,
-) -> list[SessionDefinition]:
-    """Load configurable research-session windows from sessions.json."""
-    if not config_path.exists():
-        raise ValueError(f"Could not find session config file: {config_path}")
-
-    try:
-        with config_path.open("r", encoding="utf-8") as config_file:
-            config = json.load(config_file)
-    except json.JSONDecodeError as error:
-        raise ValueError(f"sessions.json is not valid JSON: {error}") from error
-
-    sessions = config.get("sessions")
-
-    if not isinstance(sessions, list) or not sessions:
-        raise ValueError("sessions.json must contain a non-empty 'sessions' list.")
-
-    definitions = []
-
-    for session in sessions:
-        if not isinstance(session, dict):
-            raise ValueError("Each session entry must be a JSON object.")
-
-        try:
-            name = str(session["name"])
-            timezone_name = str(session["timezone"])
-            local_start = parse_session_time(str(session["local_start"]))
-            local_end = parse_session_time(str(session["local_end"]))
-            color = str(session["color"])
-        except KeyError as error:
-            raise ValueError(f"Session entry is missing required field: {error}") from error
-
-        definitions.append(
-            SessionDefinition(
-                name=name,
-                timezone_name=timezone_name,
-                local_start=local_start,
-                local_end=local_end,
-                color=color,
-            )
-        )
-
-    return definitions
-
-
-def convert_session_to_utc_window(
-    trading_day: date,
-    session: SessionDefinition,
-) -> SessionWindow:
-    """Convert one local session definition into UTC timestamps for the chart."""
-    try:
-        session_timezone = ZoneInfo(session.timezone_name)
-    except ZoneInfoNotFoundError as error:
-        raise ValueError(
-            f"Could not load timezone '{session.timezone_name}'. "
-            "On Windows, install timezone data with: python -m pip install tzdata"
-        ) from error
-
-    local_start = datetime.combine(
-        trading_day,
-        session.local_start,
-        tzinfo=session_timezone,
-    )
-    local_end = datetime.combine(
-        trading_day,
-        session.local_end,
-        tzinfo=session_timezone,
-    )
-
-    if local_end <= local_start:
-        local_end += timedelta(days=1)
-
-    start_utc = local_start.astimezone(timezone.utc).replace(tzinfo=None)
-    end_utc = local_end.astimezone(timezone.utc).replace(tzinfo=None)
-
-    return SessionWindow(
-        name=session.name,
-        start_utc=start_utc,
-        end_utc=end_utc,
-        color=session.color,
-    )
-
-
-def get_session_windows(trading_day: date) -> list[SessionWindow]:
-    """Load session definitions and convert them to UTC windows."""
-    definitions = load_session_definitions()
-    return [
-        convert_session_to_utc_window(trading_day, definition)
-        for definition in definitions
-    ]
 
 
 def is_inactive_placeholder_candle(candle: Candle) -> bool:

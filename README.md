@@ -4,7 +4,7 @@ XAUUSD Lab is a long-term Python research project for studying XAU/USD, which is
 
 The project will grow step by step into a research platform for downloading historical market data, storing it cleanly, analysing price behaviour, testing trading strategies, and eventually building a desktop research application.
 
-Current version: **v0.8**
+Current version: **v0.9**
 
 ## Current Features
 
@@ -75,6 +75,14 @@ data_raw/XAUUSD_2024-01-26_1min_BID_UTC.csv
 
 It prints the open, high, low, close, daily range, time of high, time of low, total CSV rows, active candles, inactive market-closed placeholder rows, and average volume for active candles.
 
+You can also print Tokyo, London, and New York research-session statistics:
+
+```powershell
+python explorer.py 2024-01-26 --sessions
+```
+
+Session statistics include each session's local-time window, UTC window, open, high, low, close, range, time of high, time of low, and active candle count.
+
 ### Chart Viewer
 
 Use `chart.py` to display a candlestick chart for one downloaded CSV file.
@@ -109,21 +117,18 @@ data_raw/XAUUSD_2024-01-26_1min_BID_UTC.csv
 
 The chart shows 1-minute candlesticks with time on the x-axis and price on the y-axis. Hover near a candle to see its timestamp, open, high, low, and close values.
 
-The session overlays are configurable research windows, not universal exchange opening hours. Their defaults live in `sessions.json` and use local time zones, which are converted to UTC for the selected date using Python's `zoneinfo` support.
+The session overlays and explorer session statistics are configurable research windows, not universal exchange opening hours. Their defaults live in `sessions.json` and use local time zones, which are converted to UTC for the selected date using Python's `zoneinfo` support.
 
 Raw CSV files are never edited. Charting and statistics ignore only contiguous flat, zero-volume placeholder rows at the beginning or end of a daily file, which prevents market-closed rows from distorting charts and calculations.
 
-The chart viewer uses `matplotlib`. If needed, install it with:
+External Python packages are listed in `requirements.txt`. Install them with:
 
 ```powershell
-python -m pip install matplotlib
+python -m pip install -r requirements.txt
 ```
 
-Session timezone conversion uses Python's standard-library `zoneinfo` module. On Windows, if Python cannot find IANA time zones such as `America/New_York`, install the timezone data package:
+Session timezone conversion uses Python's standard-library `zoneinfo` module. On Windows, `tzdata` from `requirements.txt` gives Python the IANA time zone names such as `America/New_York`.
 
-```powershell
-python -m pip install tzdata
-```
 
 ## Output Files
 

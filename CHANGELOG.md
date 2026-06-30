@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.9
+
+- Added `session_tools.py` for shared session loading, timezone conversion, candle selection, and session statistics.
+- Added `python explorer.py YYYY-MM-DD --sessions` for Tokyo, London, and New York session statistics.
+- Kept chart session overlays working through the shared session tools.
+- Added `requirements.txt` with `matplotlib` and `tzdata`.
+- Added tests for January 26, 2024 session statistics and July 1, 2024 daylight-saving conversions.
+
 ## v0.8
 
 - Added optional Tokyo, London, and New York research-session overlays to `chart.py`.

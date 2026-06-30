@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import csv
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
 from candle_filters import is_flat_zero_volume_candle, remove_edge_inactive_placeholders
+from session_tools import CandleData, calculate_session_statistics, get_session_windows
 
 
 SYMBOL = "XAUUSD"
@@ -23,12 +25,33 @@ PROJECT_DIR = Path(__file__).resolve().parent
 DATA_RAW_DIR = PROJECT_DIR / "data_raw"
 
 
+@dataclass
+class ExplorerArguments:
+    """Command-line options for the data explorer."""
+
+    day: date
+    show_sessions: bool
+
+
 def parse_day(day_text: str) -> date:
     """Convert text like '2024-01-26' into a Python date."""
     try:
         return datetime.strptime(day_text, "%Y-%m-%d").date()
     except ValueError as error:
         raise ValueError("Please enter the date in YYYY-MM-DD format.") from error
+
+
+def parse_arguments(arguments: list[str]) -> ExplorerArguments:
+    """Read the date and optional --sessions flag from the command line."""
+    if len(arguments) not in (1, 2):
+        raise ValueError("Please enter one date, with optional --sessions.")
+
+    flags = arguments[1:]
+
+    if flags and flags[0] != "--sessions":
+        raise ValueError("The only optional explorer flag is --sessions.")
+
+    return ExplorerArguments(day=parse_day(arguments[0]), show_sessions="--sessions" in flags)
 
 
 def build_csv_path(day: date) -> Path:
@@ -55,6 +78,26 @@ def is_inactive_placeholder_row(candle: dict[str, str]) -> bool:
     )
 
 
+def get_active_rows(candles: list[dict[str, str]]):
+    """Remove only leading/trailing inactive placeholder rows."""
+    return remove_edge_inactive_placeholders(
+        candles,
+        is_inactive_placeholder_row,
+    )
+
+
+def row_to_candle_data(candle: dict[str, str]) -> CandleData:
+    """Convert one CSV row into the simple candle shape used by sessions."""
+    return CandleData(
+        timestamp=datetime.strptime(candle["timestamp_utc"], "%Y-%m-%d %H:%M:%S"),
+        open=float(candle["open"]),
+        high=float(candle["high"]),
+        low=float(candle["low"]),
+        close=float(candle["close"]),
+        volume=float(candle["volume"]),
+    )
+
+
 def time_from_timestamp(timestamp: str) -> str:
     """Get only the HH:MM:SS part from a timestamp."""
     # The downloader writes timestamps like "2024-01-26 13:45:00".
@@ -66,10 +109,7 @@ def calculate_daily_statistics(candles: list[dict[str, str]]) -> dict[str, float
     if not candles:
         raise ValueError("The CSV file does not contain any candle rows.")
 
-    active_result = remove_edge_inactive_placeholders(
-        candles,
-        is_inactive_placeholder_row,
-    )
+    active_result = get_active_rows(candles)
     active_candles = active_result.active_rows
 
     if not active_candles:
@@ -122,6 +162,18 @@ def calculate_daily_statistics(candles: list[dict[str, str]]) -> dict[str, float
     }
 
 
+def calculate_session_statistics_for_day(day: date, candles: list[dict[str, str]]):
+    """Calculate statistics for each configured research session."""
+    active_result = get_active_rows(candles)
+    active_candles = [row_to_candle_data(candle) for candle in active_result.active_rows]
+    session_windows = get_session_windows(day)
+
+    return [
+        calculate_session_statistics(active_candles, session_window)
+        for session_window in session_windows
+    ]
+
+
 def print_statistics(day: date, csv_path: Path, statistics: dict[str, float | int | str]) -> None:
     """Print the daily statistics in a clear format."""
     print("XAUUSD Lab - Data Explorer")
@@ -144,20 +196,69 @@ def print_statistics(day: date, csv_path: Path, statistics: dict[str, float | in
     print(f"Average volume (active candles): {statistics['average_volume']:.8f}")
 
 
+def print_session_statistics(session_statistics) -> None:
+    """Print one session's statistics in a clear format."""
+    print()
+    print(f"{session_statistics.session_name} session")
+    print(
+        "Local window: "
+        f"{session_statistics.local_start:%H:%M}-"
+        f"{session_statistics.local_end:%H:%M} "
+        f"{session_statistics.timezone_name}"
+    )
+    print(
+        "UTC window: "
+        f"{session_statistics.start_utc:%H:%M}-"
+        f"{session_statistics.end_utc:%H:%M} UTC"
+    )
+
+    if not session_statistics.has_active_candles:
+        print("No active candles in this session.")
+        return
+
+    print(f"Open: {session_statistics.open:.3f}")
+    print(f"High: {session_statistics.high:.3f}")
+    print(f"Low: {session_statistics.low:.3f}")
+    print(f"Close: {session_statistics.close:.3f}")
+    print(f"Range: ${session_statistics.range_dollars:.3f}")
+    print(
+        "Time of high: "
+        f"{session_statistics.time_of_high_utc:%H:%M:%S} UTC / "
+        f"{session_statistics.time_of_high_local:%H:%M:%S %Z}"
+    )
+    print(
+        "Time of low: "
+        f"{session_statistics.time_of_low_utc:%H:%M:%S} UTC / "
+        f"{session_statistics.time_of_low_local:%H:%M:%S %Z}"
+    )
+    print(f"Active candle count: {session_statistics.active_candle_count}")
+
+
+def print_all_session_statistics(session_statistics_list) -> None:
+    """Print statistics for every configured research session."""
+    print()
+    print("Session statistics")
+
+    for session_statistics in session_statistics_list:
+        print_session_statistics(session_statistics)
+
+
 def print_usage() -> None:
     """Print the correct command format."""
-    print("Usage: python explorer.py YYYY-MM-DD")
+    print("Usage: python explorer.py YYYY-MM-DD [--sessions]")
     print("Example: python explorer.py 2024-01-26")
+    print("Example: python explorer.py 2024-01-26 --sessions")
 
 
 def main() -> int:
     """Run the explorer from the command line."""
-    if len(sys.argv) != 2:
+    if len(sys.argv) not in (2, 3):
         print_usage()
         return 1
 
     try:
-        requested_day = parse_day(sys.argv[1])
+        explorer_arguments = parse_arguments(sys.argv[1:])
+        requested_day = explorer_arguments.day
         csv_path = build_csv_path(requested_day)
 
         if not csv_path.exists():
@@ -169,6 +270,14 @@ def main() -> int:
         candles = load_candles(csv_path)
         statistics = calculate_daily_statistics(candles)
         print_statistics(requested_day, csv_path, statistics)
+
+        if explorer_arguments.show_sessions:
+            session_statistics = calculate_session_statistics_for_day(
+                requested_day,
+                candles,
+            )
+            print_all_session_statistics(session_statistics)
+
         return 0
 
     except ValueError as error:
