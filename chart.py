@@ -4,17 +4,21 @@ Display a candlestick chart for one downloaded XAU/USD CSV file.
 Usage:
     python chart.py 2024-01-26
     python chart.py 2024-01-26 --dark
+    python chart.py 2024-01-26 --sessions
+    python chart.py 2024-01-26 --dark --sessions
 """
 
 from __future__ import annotations
 
 import csv
+import json
 import math
 import sys
 from bisect import bisect_left
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from candle_filters import is_flat_zero_volume_candle, remove_edge_inactive_placeholders
 
@@ -31,6 +35,7 @@ PRICE_SIDE = "BID"
 
 PROJECT_DIR = Path(__file__).resolve().parent
 DATA_RAW_DIR = PROJECT_DIR / "data_raw"
+SESSIONS_CONFIG_PATH = PROJECT_DIR / "sessions.json"
 
 
 @dataclass
@@ -65,6 +70,28 @@ class ChartArguments:
 
     day: date
     dark_mode: bool
+    show_sessions: bool
+
+
+@dataclass
+class SessionDefinition:
+    """One configurable trading-session research window."""
+
+    name: str
+    timezone_name: str
+    local_start: time
+    local_end: time
+    color: str
+
+
+@dataclass
+class SessionWindow:
+    """One session window converted into naive UTC timestamps for plotting."""
+
+    name: str
+    start_utc: datetime
+    end_utc: datetime
+    color: str
 
 
 def parse_day(day_text: str) -> date:
@@ -76,14 +103,25 @@ def parse_day(day_text: str) -> date:
 
 
 def parse_arguments(arguments: list[str]) -> ChartArguments:
-    """Read the date and optional --dark flag from the command line."""
-    if len(arguments) not in (1, 2):
-        raise ValueError("Please enter one date, with optional --dark.")
+    """Read the date and optional chart flags from the command line."""
+    if len(arguments) not in (1, 2, 3):
+        raise ValueError("Please enter one date, with optional --dark and --sessions.")
 
-    if len(arguments) == 2 and arguments[1] != "--dark":
-        raise ValueError("The only optional chart flag is --dark.")
+    allowed_flags = {"--dark", "--sessions"}
+    flags = arguments[1:]
+    unknown_flags = [flag for flag in flags if flag not in allowed_flags]
 
-    return ChartArguments(day=parse_day(arguments[0]), dark_mode="--dark" in arguments)
+    if unknown_flags:
+        raise ValueError(f"Unknown chart option: {unknown_flags[0]}")
+
+    if len(flags) != len(set(flags)):
+        raise ValueError("Please do not repeat chart options.")
+
+    return ChartArguments(
+        day=parse_day(arguments[0]),
+        dark_mode="--dark" in flags,
+        show_sessions="--sessions" in flags,
+    )
 
 
 def build_csv_path(day: date) -> Path:
@@ -114,6 +152,107 @@ def load_candles(csv_path: Path) -> list[Candle]:
         raise ValueError("The CSV file does not contain any candle rows.")
 
     return candles
+
+
+def parse_session_time(time_text: str) -> time:
+    """Convert session time text like '09:00' into a Python time."""
+    try:
+        return datetime.strptime(time_text, "%H:%M").time()
+    except ValueError as error:
+        raise ValueError(f"Session time must use HH:MM format: {time_text}") from error
+
+
+def load_session_definitions(
+    config_path: Path = SESSIONS_CONFIG_PATH,
+) -> list[SessionDefinition]:
+    """Load configurable research-session windows from sessions.json."""
+    if not config_path.exists():
+        raise ValueError(f"Could not find session config file: {config_path}")
+
+    try:
+        with config_path.open("r", encoding="utf-8") as config_file:
+            config = json.load(config_file)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"sessions.json is not valid JSON: {error}") from error
+
+    sessions = config.get("sessions")
+
+    if not isinstance(sessions, list) or not sessions:
+        raise ValueError("sessions.json must contain a non-empty 'sessions' list.")
+
+    definitions = []
+
+    for session in sessions:
+        if not isinstance(session, dict):
+            raise ValueError("Each session entry must be a JSON object.")
+
+        try:
+            name = str(session["name"])
+            timezone_name = str(session["timezone"])
+            local_start = parse_session_time(str(session["local_start"]))
+            local_end = parse_session_time(str(session["local_end"]))
+            color = str(session["color"])
+        except KeyError as error:
+            raise ValueError(f"Session entry is missing required field: {error}") from error
+
+        definitions.append(
+            SessionDefinition(
+                name=name,
+                timezone_name=timezone_name,
+                local_start=local_start,
+                local_end=local_end,
+                color=color,
+            )
+        )
+
+    return definitions
+
+
+def convert_session_to_utc_window(
+    trading_day: date,
+    session: SessionDefinition,
+) -> SessionWindow:
+    """Convert one local session definition into UTC timestamps for the chart."""
+    try:
+        session_timezone = ZoneInfo(session.timezone_name)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError(
+            f"Could not load timezone '{session.timezone_name}'. "
+            "On Windows, install timezone data with: python -m pip install tzdata"
+        ) from error
+
+    local_start = datetime.combine(
+        trading_day,
+        session.local_start,
+        tzinfo=session_timezone,
+    )
+    local_end = datetime.combine(
+        trading_day,
+        session.local_end,
+        tzinfo=session_timezone,
+    )
+
+    if local_end <= local_start:
+        local_end += timedelta(days=1)
+
+    start_utc = local_start.astimezone(timezone.utc).replace(tzinfo=None)
+    end_utc = local_end.astimezone(timezone.utc).replace(tzinfo=None)
+
+    return SessionWindow(
+        name=session.name,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        color=session.color,
+    )
+
+
+def get_session_windows(trading_day: date) -> list[SessionWindow]:
+    """Load session definitions and convert them to UTC windows."""
+    definitions = load_session_definitions()
+    return [
+        convert_session_to_utc_window(trading_day, definition)
+        for definition in definitions
+    ]
 
 
 def is_inactive_placeholder_candle(candle: Candle) -> bool:
@@ -267,6 +406,38 @@ def style_chart_axes(ax, style: ChartStyle) -> None:
     ax.set_axisbelow(True)
 
 
+def draw_session_overlays(ax, session_windows: list[SessionWindow], style: ChartStyle) -> None:
+    """Draw subtle shaded research-session windows behind the candles."""
+    for session in session_windows:
+        ax.axvspan(
+            session.start_utc,
+            session.end_utc,
+            color=session.color,
+            alpha=0.13,
+            linewidth=0,
+            zorder=0,
+        )
+
+        label_time = session.start_utc + (session.end_utc - session.start_utc) / 2
+        ax.text(
+            label_time,
+            0.98,
+            session.name,
+            transform=ax.get_xaxis_transform(),
+            ha="center",
+            va="top",
+            fontsize=8,
+            color=style.text,
+            bbox={
+                "boxstyle": "round,pad=0.25",
+                "facecolor": style.annotation_background,
+                "edgecolor": session.color,
+                "alpha": 0.85,
+            },
+            zorder=5,
+        )
+
+
 def format_hover_text(candle: Candle) -> str:
     """Build the text shown when the mouse hovers near a candle."""
     return (
@@ -374,7 +545,12 @@ def add_hover_cursor(fig, ax, candles: list[Candle], style: ChartStyle) -> None:
     fig.canvas.mpl_connect("motion_notify_event", on_mouse_move)
 
 
-def create_chart_figure(day: date, candles: list[Candle], dark_mode: bool = False):
+def create_chart_figure(
+    day: date,
+    candles: list[Candle],
+    dark_mode: bool = False,
+    show_sessions: bool = False,
+):
     """Create the chart figure and axes."""
     if not matplotlib_is_loaded():
         raise RuntimeError("Matplotlib was not loaded before creating the chart.")
@@ -408,9 +584,14 @@ def create_chart_figure(day: date, candles: list[Candle], dark_mode: bool = Fals
     ax.set_ylim(*y_limits)
 
     style_chart_axes(ax, style)
+
+    if show_sessions:
+        session_windows = get_session_windows(day)
+        draw_session_overlays(ax, session_windows, style)
+
     add_hover_cursor(fig, ax, active_candles, style)
 
-    # Hover artists must not expand the chart to zero or any other value.
+    # Session overlays and hover artists must not expand the chart limits.
     ax.set_xlim(*x_limits)
     ax.set_ylim(*y_limits)
 
@@ -419,22 +600,29 @@ def create_chart_figure(day: date, candles: list[Candle], dark_mode: bool = Fals
     return fig, ax
 
 
-def display_chart(day: date, candles: list[Candle], dark_mode: bool = False) -> None:
+def display_chart(
+    day: date,
+    candles: list[Candle],
+    dark_mode: bool = False,
+    show_sessions: bool = False,
+) -> None:
     """Create and display the candlestick chart."""
-    create_chart_figure(day, candles, dark_mode)
+    create_chart_figure(day, candles, dark_mode, show_sessions)
     plt.show()
 
 
 def print_usage() -> None:
     """Print the correct command format."""
-    print("Usage: python chart.py YYYY-MM-DD [--dark]")
+    print("Usage: python chart.py YYYY-MM-DD [--dark] [--sessions]")
     print("Example: python chart.py 2024-01-26")
     print("Example: python chart.py 2024-01-26 --dark")
+    print("Example: python chart.py 2024-01-26 --sessions")
+    print("Example: python chart.py 2024-01-26 --dark --sessions")
 
 
 def main() -> int:
     """Run the chart viewer from the command line."""
-    if len(sys.argv) not in (2, 3):
+    if len(sys.argv) not in (2, 3, 4):
         print_usage()
         return 1
 
@@ -453,7 +641,12 @@ def main() -> int:
             return 1
 
         candles = load_candles(csv_path)
-        display_chart(requested_day, candles, chart_arguments.dark_mode)
+        display_chart(
+            requested_day,
+            candles,
+            chart_arguments.dark_mode,
+            chart_arguments.show_sessions,
+        )
         return 0
 
     except ValueError as error:

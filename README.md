@@ -4,7 +4,7 @@ XAUUSD Lab is a long-term Python research project for studying XAU/USD, which is
 
 The project will grow step by step into a research platform for downloading historical market data, storing it cleanly, analysing price behaviour, testing trading strategies, and eventually building a desktop research application.
 
-Current version: **v0.7.1**
+Current version: **v0.8**
 
 ## Current Features
 
@@ -89,6 +89,18 @@ You can also open the chart in dark mode:
 python chart.py 2024-01-26 --dark
 ```
 
+You can add Tokyo, London, and New York research-session overlays:
+
+```powershell
+python chart.py 2024-01-26 --sessions
+```
+
+Dark mode and session overlays can be combined:
+
+```powershell
+python chart.py 2024-01-26 --dark --sessions
+```
+
 For that command, the chart viewer loads:
 
 ```text
@@ -97,12 +109,20 @@ data_raw/XAUUSD_2024-01-26_1min_BID_UTC.csv
 
 The chart shows 1-minute candlesticks with time on the x-axis and price on the y-axis. Hover near a candle to see its timestamp, open, high, low, and close values.
 
+The session overlays are configurable research windows, not universal exchange opening hours. Their defaults live in `sessions.json` and use local time zones, which are converted to UTC for the selected date using Python's `zoneinfo` support.
+
 Raw CSV files are never edited. Charting and statistics ignore only contiguous flat, zero-volume placeholder rows at the beginning or end of a daily file, which prevents market-closed rows from distorting charts and calculations.
 
 The chart viewer uses `matplotlib`. If needed, install it with:
 
 ```powershell
 python -m pip install matplotlib
+```
+
+Session timezone conversion uses Python's standard-library `zoneinfo` module. On Windows, if Python cannot find IANA time zones such as `America/New_York`, install the timezone data package:
+
+```powershell
+python -m pip install tzdata
 ```
 
 ## Output Files

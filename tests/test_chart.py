@@ -44,6 +44,29 @@ class ChartAutoscaleRegressionTest(unittest.TestCase):
 
             chart.plt.close(fig)
 
+    def test_session_overlays_do_not_change_y_axis_scaling(self):
+        active_result = chart.get_active_candle_result(self.candles)
+        actual_low = min(candle.low for candle in active_result.active_rows)
+        actual_high = max(candle.high for candle in active_result.active_rows)
+        actual_range = actual_high - actual_low
+
+        for dark_mode in (False, True):
+            fig, ax = chart.create_chart_figure(
+                self.day,
+                self.candles,
+                dark_mode=dark_mode,
+                show_sessions=True,
+            )
+            y_min, y_max = ax.get_ylim()
+            chart_range = y_max - y_min
+
+            self.assertLess(y_min, actual_low)
+            self.assertGreater(y_max, actual_high)
+            self.assertGreater(y_min, 0)
+            self.assertLess(chart_range, actual_range * 1.25)
+
+            chart.plt.close(fig)
+
     def test_hover_does_not_reset_manual_zoom(self):
         fig, ax = chart.create_chart_figure(self.day, self.candles, dark_mode=False)
 

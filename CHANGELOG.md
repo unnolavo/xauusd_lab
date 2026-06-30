@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8
+
+- Added optional Tokyo, London, and New York research-session overlays to `chart.py`.
+- Added `sessions.json` for configurable local-time session definitions.
+- Converted session windows to UTC with Python `zoneinfo`, including daylight-saving support.
+- Added tests for January 26, 2024 session UTC windows and chart scaling with overlays.
+
 ## v0.7.1
 
 - Added shared detection for leading/trailing market-closed placeholder rows.
