@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.10
+
+- Added `session_report.py` for multi-day session research reports.
+- Added one output row per requested date with daily and configured-session statistics.
+- Added report statuses for complete, missing file, no active candles, and failed dates.
+- Added `reports/.gitkeep` and ignored generated report CSV files.
+- Added tests for report row counts, missing files, stable column order, and single-day value matching.
+
 ## v0.9
 
 - Added `session_tools.py` for shared session loading, timezone conversion, candle selection, and session statistics.

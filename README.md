@@ -4,7 +4,7 @@ XAUUSD Lab is a long-term Python research project for studying XAU/USD, which is
 
 The project will grow step by step into a research platform for downloading historical market data, storing it cleanly, analysing price behaviour, testing trading strategies, and eventually building a desktop research application.
 
-Current version: **v0.9**
+Current version: **v0.10**
 
 ## Current Features
 
@@ -83,6 +83,22 @@ python explorer.py 2024-01-26 --sessions
 
 Session statistics include each session's local-time window, UTC window, open, high, low, close, range, time of high, time of low, and active candle count.
 
+### Session Report
+
+Use `session_report.py` to create one research-ready CSV row per requested date.
+
+```powershell
+python session_report.py 2024-01-01 2024-01-31
+```
+
+For that command, the report is saved to:
+
+```text
+reports/session_report_2024-01-01_to_2024-01-31.csv
+```
+
+The report includes daily active-candle statistics, inactive placeholder counts, and one set of Tokyo, London, and New York session statistics per date. Missing daily CSV files are kept in the report with `missing_file` status instead of stopping the run.
+
 ### Chart Viewer
 
 Use `chart.py` to display a candlestick chart for one downloaded CSV file.
@@ -141,6 +157,8 @@ data_raw/XAUUSD_2024-01-02_1min_BID_UTC.csv
 ```
 
 If a CSV file already exists, the downloader skips that day instead of downloading it again.
+
+Generated research reports are saved in the `reports/` folder.
 
 ## Failed Downloads
 

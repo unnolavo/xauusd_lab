@@ -4,6 +4,10 @@ data_raw/*.csv
 # Runtime logs
 logs/
 
+# Generated reports
+reports/*
+!reports/.gitkeep
+
 # Python cache files
 __pycache__/
 *.pyc
