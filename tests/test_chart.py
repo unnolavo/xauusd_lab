@@ -1,13 +1,14 @@
 import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 # Use a non-interactive backend so tests do not open a chart window.
 os.environ["MPLBACKEND"] = "Agg"
 
-from matplotlib.backend_bases import MouseEvent
-
 import chart
+from fixture_helpers import make_friday_rows_active_until_22_utc, write_daily_csv
 
 
 class ChartAutoscaleRegressionTest(unittest.TestCase):
@@ -17,13 +18,31 @@ class ChartAutoscaleRegressionTest(unittest.TestCase):
             raise unittest.SkipTest("matplotlib is not installed")
 
         day = chart.parse_day("2024-01-26")
-        csv_path = chart.build_csv_path(day)
-
-        if not csv_path.exists():
-            raise unittest.SkipTest("2024-01-26 CSV is not available")
+        cls.temp_dir = TemporaryDirectory()
+        data_dir = Path(cls.temp_dir.name) / "data_raw"
+        csv_path = write_daily_csv(
+            data_dir,
+            day,
+            make_friday_rows_active_until_22_utc(day),
+        )
 
         cls.day = day
         cls.candles = chart.load_candles(csv_path)
+
+    @classmethod
+    def tearDownClass(cls):
+        if hasattr(cls, "temp_dir"):
+            cls.temp_dir.cleanup()
+
+    def test_create_chart_figure_returns_figure_and_axes(self):
+        fig, ax = chart.create_chart_figure(self.day, self.candles, dark_mode=False)
+
+        self.assertIs(ax, fig.axes[0])
+        self.assertEqual(
+            ax.get_title(),
+            "XAU/USD 1-Minute BID Candlestick Chart - 2024-01-26",
+        )
+        chart.plt.close(fig)
 
     def test_initial_y_axis_uses_candle_prices_only(self):
         active_result = chart.get_active_candle_result(self.candles)
@@ -68,6 +87,8 @@ class ChartAutoscaleRegressionTest(unittest.TestCase):
             chart.plt.close(fig)
 
     def test_hover_does_not_reset_manual_zoom(self):
+        from matplotlib.backend_bases import MouseEvent
+
         fig, ax = chart.create_chart_figure(self.day, self.candles, dark_mode=False)
 
         manual_y_limits = (2018.0, 2024.0)

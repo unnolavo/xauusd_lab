@@ -1,6 +1,8 @@
 import os
 import unittest
 from datetime import datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 # Use a non-interactive backend so chart tests do not open a window.
@@ -8,6 +10,7 @@ os.environ["MPLBACKEND"] = "Agg"
 
 import chart
 import explorer
+from fixture_helpers import make_friday_rows_active_until_22_utc, write_daily_csv
 from session_tools import get_session_windows
 
 
@@ -79,31 +82,29 @@ class TradingSessionOverlayTest(unittest.TestCase):
             raise unittest.SkipTest("matplotlib is not installed")
 
         day = chart.parse_day("2024-01-26")
-        csv_path = chart.build_csv_path(day)
 
-        if not csv_path.exists():
-            raise unittest.SkipTest("2024-01-26 CSV is not available")
+        with TemporaryDirectory() as temp_root:
+            csv_path = write_daily_csv(
+                Path(temp_root),
+                day,
+                make_friday_rows_active_until_22_utc(day),
+            )
+            candles = chart.load_candles(csv_path)
 
-        candles = chart.load_candles(csv_path)
-        fig, ax = chart.create_chart_figure(
-            day,
-            candles,
-            dark_mode=True,
-            show_sessions=True,
-        )
+            fig, ax = chart.create_chart_figure(
+                day,
+                candles,
+                dark_mode=True,
+                show_sessions=True,
+            )
 
         y_min, _y_max = ax.get_ylim()
         self.assertGreater(y_min, 0)
         chart.plt.close(fig)
 
-    def test_session_statistics_match_january_26_csv_data(self):
+    def test_session_statistics_match_synthetic_csv_data(self):
         day = chart.parse_day("2024-01-26")
-        csv_path = chart.build_csv_path(day)
-
-        if not csv_path.exists():
-            raise unittest.SkipTest("2024-01-26 CSV is not available")
-
-        rows = explorer.load_candles(csv_path)
+        rows = make_friday_rows_active_until_22_utc(day)
         active_rows = explorer.get_active_rows(rows).active_rows
         statistics_by_name = {
             statistics.session_name: statistics
@@ -140,6 +141,32 @@ class TradingSessionOverlayTest(unittest.TestCase):
                 expected_high - expected_low,
                 places=6,
             )
+
+    def test_overlapping_session_windows_can_share_candles(self):
+        day = chart.parse_day("2024-01-26")
+        rows = make_friday_rows_active_until_22_utc(day)
+        active_rows = explorer.get_active_rows(rows).active_rows
+        windows = {window.name: window for window in get_session_windows(day)}
+
+        def selected_timestamps(session_name):
+            window = windows[session_name]
+            return {
+                row["timestamp_utc"]
+                for row in active_rows
+                if (
+                    window.start_utc
+                    <= datetime.strptime(row["timestamp_utc"], "%Y-%m-%d %H:%M:%S")
+                    < window.end_utc
+                )
+            }
+
+        london_timestamps = selected_timestamps("London")
+        new_york_timestamps = selected_timestamps("New York")
+        shared_timestamps = london_timestamps & new_york_timestamps
+
+        self.assertEqual(len(shared_timestamps), 240)
+        self.assertIn("2024-01-26 13:00:00", shared_timestamps)
+        self.assertIn("2024-01-26 16:59:00", shared_timestamps)
 
 
 if __name__ == "__main__":

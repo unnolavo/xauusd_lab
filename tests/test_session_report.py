@@ -1,12 +1,23 @@
 import csv
 import hashlib
 import unittest
-from datetime import date
+from collections import Counter
+from datetime import date, time
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import chart
 import explorer
 import session_report
+from fixture_helpers import (
+    make_active_rows,
+    make_friday_rows_active_until_22_utc,
+    make_placeholder_only_day,
+    production_csv_filename,
+    write_daily_csv,
+    write_invalid_daily_csv,
+)
 
 
 class SessionReportTest(unittest.TestCase):
@@ -14,14 +25,21 @@ class SessionReportTest(unittest.TestCase):
         start_day = date(2024, 1, 1)
         end_day = date(2024, 1, 3)
 
-        for day in session_report.each_day(start_day, end_day):
-            if not session_report.build_csv_path(day).exists():
-                raise unittest.SkipTest("January 2024 CSV files are not available")
+        with TemporaryDirectory() as temp_root:
+            data_dir = Path(temp_root) / "data_raw"
+            reports_dir = Path(temp_root) / "reports"
 
-        summary = session_report.create_session_report(start_day, end_day)
+            for day in session_report.each_day(start_day, end_day):
+                write_daily_csv(data_dir, day, make_active_rows(day, end_time=time(0, 5)))
 
-        with summary.output_path.open("r", newline="", encoding="utf-8") as report_file:
-            rows = list(csv.DictReader(report_file))
+            with (
+                patch("session_report.DATA_RAW_DIR", data_dir),
+                patch("session_report.REPORTS_DIR", reports_dir),
+            ):
+                summary = session_report.create_session_report(start_day, end_day)
+
+            with summary.output_path.open("r", newline="", encoding="utf-8") as report_file:
+                rows = list(csv.DictReader(report_file))
 
         self.assertEqual(summary.requested_dates, 3)
         self.assertEqual(len(rows), 3)
@@ -33,23 +51,34 @@ class SessionReportTest(unittest.TestCase):
 
     def test_single_day_values_match_existing_calculations(self):
         day = date(2024, 1, 26)
-        csv_path = session_report.build_csv_path(day)
 
-        if not csv_path.exists():
-            raise unittest.SkipTest("2024-01-26 CSV is not available")
+        with TemporaryDirectory() as temp_root:
+            data_dir = Path(temp_root) / "data_raw"
+            reports_dir = Path(temp_root) / "reports"
+            csv_path = write_daily_csv(
+                data_dir,
+                day,
+                make_friday_rows_active_until_22_utc(day),
+            )
 
-        before_hash = hashlib.sha256(csv_path.read_bytes()).hexdigest()
-        summary = session_report.create_session_report(day, day)
+            before_hash = hashlib.sha256(csv_path.read_bytes()).hexdigest()
 
-        with summary.output_path.open("r", newline="", encoding="utf-8") as report_file:
-            report_row = next(csv.DictReader(report_file))
+            with (
+                patch("session_report.DATA_RAW_DIR", data_dir),
+                patch("session_report.REPORTS_DIR", reports_dir),
+            ):
+                summary = session_report.create_session_report(day, day)
 
-        raw_rows = explorer.load_candles(csv_path)
-        daily_statistics = explorer.calculate_daily_statistics(raw_rows)
-        session_statistics = {
-            statistics.session_name.lower().replace(" ", "_"): statistics
-            for statistics in explorer.calculate_session_statistics_for_day(day, raw_rows)
-        }
+            with summary.output_path.open("r", newline="", encoding="utf-8") as report_file:
+                report_row = next(csv.DictReader(report_file))
+
+            raw_rows = explorer.load_candles(csv_path)
+            daily_statistics = explorer.calculate_daily_statistics(raw_rows)
+            session_statistics = {
+                statistics.session_name.lower().replace(" ", "_"): statistics
+                for statistics in explorer.calculate_session_statistics_for_day(day, raw_rows)
+            }
+            after_hash = hashlib.sha256(csv_path.read_bytes()).hexdigest()
 
         self.assertEqual(report_row["daily_open"], f"{daily_statistics['open_price']:.3f}")
         self.assertEqual(report_row["daily_high"], f"{daily_statistics['high_price']:.3f}")
@@ -67,13 +96,38 @@ class SessionReportTest(unittest.TestCase):
         self.assertEqual(report_row["tokyo_range"], f"{tokyo_statistics.range_dollars:.3f}")
         self.assertEqual(report_row["tokyo_active_candle_count"], "540")
 
-        after_hash = hashlib.sha256(csv_path.read_bytes()).hexdigest()
         self.assertEqual(before_hash, after_hash)
 
-    def test_summary_counts_reconcile_to_requested_dates(self):
+    def test_summary_counts_reconcile_to_requested_dates_with_all_statuses(self):
         start_day = date(2024, 1, 1)
-        end_day = date(2024, 1, 31)
-        summary = session_report.create_session_report(start_day, end_day)
+        end_day = date(2024, 1, 5)
+
+        with TemporaryDirectory() as temp_root:
+            data_dir = Path(temp_root) / "data_raw"
+            reports_dir = Path(temp_root) / "reports"
+
+            write_daily_csv(data_dir, date(2024, 1, 1), make_active_rows(date(2024, 1, 1)))
+            write_daily_csv(data_dir, date(2024, 1, 2), make_active_rows(date(2024, 1, 2)))
+            write_daily_csv(
+                data_dir,
+                date(2024, 1, 3),
+                make_placeholder_only_day(date(2024, 1, 3)),
+            )
+            write_invalid_daily_csv(data_dir, date(2024, 1, 4))
+            # 2024-01-05 is intentionally absent to exercise missing_file.
+
+            with (
+                patch("session_report.DATA_RAW_DIR", data_dir),
+                patch("session_report.REPORTS_DIR", reports_dir),
+                patch("builtins.print"),
+            ):
+                summary = session_report.create_session_report(start_day, end_day)
+
+            with summary.output_path.open("r", newline="", encoding="utf-8") as report_file:
+                rows = list(csv.DictReader(report_file))
+
+        statuses_by_date = {row["date"]: row["status"] for row in rows}
+        status_counts = Counter(statuses_by_date.values())
 
         counted_dates = (
             summary.completed_dates
@@ -82,8 +136,26 @@ class SessionReportTest(unittest.TestCase):
             + summary.failed_dates
         )
 
-        self.assertEqual(summary.requested_dates, 31)
-        self.assertEqual(summary.no_active_candle_dates, 4)
+        self.assertEqual(summary.requested_dates, 5)
+        self.assertEqual(summary.completed_dates, 2)
+        self.assertEqual(summary.no_active_candle_dates, 1)
+        self.assertEqual(summary.failed_dates, 1)
+        self.assertEqual(summary.missing_files, 1)
+        self.assertEqual(len(rows), 5)
+        self.assertEqual(
+            statuses_by_date,
+            {
+                "2024-01-01": "complete",
+                "2024-01-02": "complete",
+                "2024-01-03": "no_active_candles",
+                "2024-01-04": "failed",
+                "2024-01-05": "missing_file",
+            },
+        )
+        self.assertEqual(status_counts["complete"], 2)
+        self.assertEqual(status_counts["no_active_candles"], 1)
+        self.assertEqual(status_counts["failed"], 1)
+        self.assertEqual(status_counts["missing_file"], 1)
         self.assertEqual(counted_dates, summary.requested_dates)
 
     def test_missing_file_produces_missing_file_status_row(self):
@@ -144,6 +216,14 @@ class SessionReportTest(unittest.TestCase):
         ]
 
         self.assertEqual(columns, expected_columns)
+
+    def test_csv_path_builders_use_production_filename(self):
+        day = date(2024, 1, 26)
+        expected_filename = production_csv_filename(day)
+
+        self.assertEqual(session_report.build_csv_path(day).name, expected_filename)
+        self.assertEqual(explorer.build_csv_path(day).name, expected_filename)
+        self.assertEqual(chart.build_csv_path(day).name, expected_filename)
 
 
 if __name__ == "__main__":

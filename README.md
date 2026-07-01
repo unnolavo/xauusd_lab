@@ -4,7 +4,7 @@ XAUUSD Lab is a long-term Python research project for studying XAU/USD, which is
 
 The project will grow step by step into a research platform for downloading historical market data, storing it cleanly, analysing price behaviour, testing trading strategies, and eventually building a desktop research application.
 
-Current version: **v0.10**
+Current version: **v0.10.1**
 
 ## Project Documentation
 
@@ -153,6 +153,16 @@ python -m pip install -r requirements.txt
 ```
 
 Session timezone conversion uses Python's standard-library `zoneinfo` module. On Windows, `tzdata` from `requirements.txt` gives Python the IANA time zone names such as `America/New_York`.
+
+## Testing
+
+Run the automated test suite with:
+
+```powershell
+python -m unittest discover -s tests
+```
+
+The tests create deterministic synthetic CSV fixtures in temporary folders. They do not require downloaded raw CSV files in `data_raw/`.
 
 
 ## Output Files

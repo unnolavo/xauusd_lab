@@ -1,6 +1,9 @@
 import hashlib
 import os
 import unittest
+from datetime import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 # Use a non-interactive backend so chart tests do not open a window.
@@ -9,46 +12,63 @@ os.environ["MPLBACKEND"] = "Agg"
 import chart
 import explorer
 from candle_filters import remove_edge_inactive_placeholders
+from fixture_helpers import make_active_rows, make_placeholder_rows, write_daily_csv
 
 
 class MarketClosedPlaceholderTest(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.day = chart.parse_day("2024-01-26")
-        cls.csv_path = chart.build_csv_path(cls.day)
+    def setUp(self):
+        self.day = chart.parse_day("2024-01-26")
 
-        if not cls.csv_path.exists():
-            raise unittest.SkipTest("2024-01-26 CSV is not available")
+    def make_rows_with_edge_placeholders(self):
+        return (
+            make_placeholder_rows(self.day, time(0, 0), time(0, 2))
+            + make_active_rows(self.day, time(0, 2), time(0, 6), base_price=2010.0)
+            + make_placeholder_rows(self.day, time(0, 6), time(0, 9))
+        )
 
-        cls.chart_candles = chart.load_candles(cls.csv_path)
-        cls.explorer_rows = explorer.load_candles(cls.csv_path)
+    def test_leading_and_trailing_placeholders_are_detected(self):
+        with TemporaryDirectory() as temp_root:
+            csv_path = write_daily_csv(
+                Path(temp_root),
+                self.day,
+                self.make_rows_with_edge_placeholders(),
+            )
+            chart_candles = chart.load_candles(csv_path)
 
-    def test_january_26_trailing_placeholders_are_detected(self):
-        active_result = chart.get_active_candle_result(self.chart_candles)
+        active_result = chart.get_active_candle_result(chart_candles)
 
-        self.assertEqual(len(self.chart_candles), 1440)
-        self.assertEqual(active_result.leading_inactive_count, 0)
-        self.assertEqual(active_result.trailing_inactive_count, 120)
-        self.assertEqual(active_result.active_count, 1320)
-        self.assertEqual(active_result.inactive_count, 120)
+        self.assertEqual(len(chart_candles), 9)
+        self.assertEqual(active_result.leading_inactive_count, 2)
+        self.assertEqual(active_result.trailing_inactive_count, 3)
+        self.assertEqual(active_result.active_count, 4)
+        self.assertEqual(active_result.inactive_count, 5)
 
         self.assertEqual(
-            active_result.active_rows[-1].timestamp.strftime("%H:%M"),
-            "21:59",
+            active_result.active_rows[0].timestamp.strftime("%H:%M"),
+            "00:02",
         )
-        self.assertEqual(self.chart_candles[1320].timestamp.strftime("%H:%M"), "22:00")
-        self.assertEqual(self.chart_candles[-1].timestamp.strftime("%H:%M"), "23:59")
+        self.assertEqual(
+            active_result.active_rows[-1].timestamp.strftime("%H:%M"),
+            "00:05",
+        )
 
-        for candle in self.chart_candles[1320:]:
+        for candle in chart_candles[:2] + chart_candles[6:]:
             self.assertTrue(chart.is_inactive_placeholder_candle(candle))
 
     def test_explorer_reports_raw_and_active_counts(self):
-        statistics = explorer.calculate_daily_statistics(self.explorer_rows)
+        explorer_rows = self.make_rows_with_edge_placeholders()
+        active_rows = explorer.get_active_rows(explorer_rows).active_rows
+        expected_low_row = min(active_rows, key=lambda row: float(row["low"]))
 
-        self.assertEqual(statistics["total_csv_rows"], 1440)
-        self.assertEqual(statistics["active_candles"], 1320)
-        self.assertEqual(statistics["inactive_placeholder_rows"], 120)
-        self.assertEqual(statistics["time_of_low"], "16:14:00")
+        statistics = explorer.calculate_daily_statistics(explorer_rows)
+
+        self.assertEqual(statistics["total_csv_rows"], 9)
+        self.assertEqual(statistics["active_candles"], 4)
+        self.assertEqual(statistics["inactive_placeholder_rows"], 5)
+        self.assertEqual(
+            statistics["time_of_low"],
+            expected_low_row["timestamp_utc"].split(" ")[1],
+        )
 
     def test_middle_placeholder_like_rows_are_not_removed(self):
         rows = [
@@ -74,18 +94,25 @@ class MarketClosedPlaceholderTest(unittest.TestCase):
         ])
 
     def test_raw_csv_is_not_edited_by_tools(self):
-        before_hash = hashlib.sha256(self.csv_path.read_bytes()).hexdigest()
+        with TemporaryDirectory() as temp_root:
+            csv_path = write_daily_csv(
+                Path(temp_root),
+                self.day,
+                self.make_rows_with_edge_placeholders(),
+            )
+            before_hash = hashlib.sha256(csv_path.read_bytes()).hexdigest()
 
-        explorer.calculate_daily_statistics(explorer.load_candles(self.csv_path))
+            explorer.calculate_daily_statistics(explorer.load_candles(csv_path))
 
-        if not chart.check_matplotlib_is_available():
-            raise unittest.SkipTest("matplotlib is not installed")
+            if not chart.check_matplotlib_is_available():
+                raise unittest.SkipTest("matplotlib is not installed")
 
-        candles = chart.load_candles(self.csv_path)
-        fig, _ax = chart.create_chart_figure(self.day, candles, dark_mode=True)
-        chart.plt.close(fig)
+            candles = chart.load_candles(csv_path)
+            fig, _ax = chart.create_chart_figure(self.day, candles, dark_mode=True)
+            chart.plt.close(fig)
 
-        after_hash = hashlib.sha256(self.csv_path.read_bytes()).hexdigest()
+            after_hash = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+
         self.assertEqual(before_hash, after_hash)
 
 

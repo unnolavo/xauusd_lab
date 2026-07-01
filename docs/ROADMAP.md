@@ -1,6 +1,6 @@
 # Roadmap
 
-Current confirmed milestone: **v0.10**.
+Current confirmed milestone: **v0.10.1**.
 
 Completed milestones are reconstructed from `CHANGELOG.md`, the current repository, and Git history.
 
@@ -81,6 +81,13 @@ Completed milestones are reconstructed from `CHANGELOG.md`, the current reposito
 - Added `reports/.gitkeep` and ignored generated report CSV files.
 - Added tests for report row counts, missing files, stable column order, and single-day value matching.
 - Current repository behaviour also prints no-active-candle dates in the session-report completion summary.
+
+### v0.10.1
+
+- Added deterministic synthetic CSV fixture helpers for automated tests.
+- Removed automated-test dependence on ignored local January 2024 `data_raw/` CSV files.
+- Preserved report, chart, session, and placeholder coverage with temporary fixtures.
+- Kept production runtime behaviour unchanged.
 
 ## Proposed Future Work
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.10.1
+
+- Made the automated test suite independent of ignored local `data_raw/` CSV files.
+- Added deterministic synthetic CSV fixture helpers for tests.
+- Replaced January 2024 personal-data test dependencies with temporary synthetic fixtures.
+- Added session-report reconciliation coverage for complete, missing file, no-active-candle, and failed statuses.
+- Kept chart tests headless with synthetic data and non-interactive matplotlib rendering.
+
 ## v0.10
 
 - Added `session_report.py` for multi-day session research reports.

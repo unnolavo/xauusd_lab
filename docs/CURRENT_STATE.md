@@ -1,6 +1,6 @@
 # Current State
 
-Verified milestone: **v0.10**.
+Verified milestone: **v0.10.1**.
 
 XAUUSD Lab is a Python research project for studying XAU/USD, meaning gold priced in US dollars. The current repository focuses on downloading Dukascopy one-minute BID data, exploring daily data, charting candles, applying configurable research-session windows, and producing multi-day session research reports.
 
@@ -36,7 +36,7 @@ __pycache__/
 tests/__pycache__/
 ```
 
-The local `data_raw/` folder on the current development machine contains January 2024 daily XAUUSD CSV files. Those CSV files are ignored by Git and are not included in a fresh Git clone.
+The local `data_raw/` folder may contain ignored downloaded XAUUSD CSV files on a development machine. Those CSV files are not included in a fresh Git clone, and the automated tests do not require them.
 
 ## Python Files
 
@@ -175,7 +175,7 @@ reports/session_report_2024-01-01_to_2024-01-31.csv
 
 `reports/.gitkeep` keeps the report folder present in Git. Generated report CSV files are ignored.
 
-Tests live in `tests/`. Several tests use the January 2024 CSV files. Some tests skip if a specific fixture CSV is missing, but the current full suite expects the January 2024 files to be available for the session-report summary checks. Those ignored CSV files exist on the current development machine, but they are not included in a fresh Git clone.
+Tests live in `tests/`. The automated tests use deterministic synthetic CSV fixtures created in temporary folders, so the suite does not require downloaded raw CSV files in `data_raw/`.
 
 ## Git Treatment Of Generated Files
 
@@ -191,13 +191,13 @@ Source code, tests, documentation, JSON configuration, and `requirements.txt` ar
 
 ## Automated Test Status
 
-The current v0.10 test suite contains 17 tests and currently passes with:
+The current v0.10.1 test suite contains 20 tests and currently passes with:
 
 ```powershell
 python -m unittest discover -s tests
 ```
 
-The latest completed and committed application milestone is v0.10.
+The latest completed application milestone is v0.10.1.
 
 ## Recent Manually Verified Behaviour
 
@@ -256,5 +256,4 @@ Verified January 2024 result:
 - `explorer.py`, `chart.py`, and `session_report.py` are currently built around XAUUSD one-minute BID CSV filenames.
 - Generated reports are overwritten when the same date range is run again.
 - Session windows are configurable research windows, not proof of exchange opening hours.
-- Some automated tests depend on local January 2024 CSV files being present.
 - The current project is a research platform, not evidence of a profitable trading system.
