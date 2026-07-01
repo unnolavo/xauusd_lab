@@ -6,6 +6,15 @@ The project will grow step by step into a research platform for downloading hist
 
 Current version: **v0.10**
 
+## Project Documentation
+
+- [Agent guide](AGENTS.md)
+- [Current state](docs/CURRENT_STATE.md)
+- [Durable decisions](docs/DECISIONS.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Workflow](docs/WORKFLOW.md)
+- [Changelog](CHANGELOG.md)
+
 ## Current Features
 
 ### Downloader
@@ -172,9 +181,4 @@ The downloader retries each failed day up to 3 times before writing it to the fa
 
 ## Roadmap
 
-- Future: Improve downloader configuration and validation.
-- Future: Download longer historical periods safely.
-- Future: Organise raw data into a clean master dataset.
-- Future: Add more analysis, exploration, and charting tools.
-- Future: Build and test simple trading strategies.
-- Future: Create a desktop research application.
+See [docs/ROADMAP.md](docs/ROADMAP.md) for completed milestones and clearly labelled proposed future work.

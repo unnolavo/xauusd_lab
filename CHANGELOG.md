@@ -7,6 +7,7 @@
 - Added report statuses for complete, missing file, no active candles, and failed dates.
 - Added `reports/.gitkeep` and ignored generated report CSV files.
 - Added tests for report row counts, missing files, stable column order, and single-day value matching.
+- Added a terminal summary count for no-active-candle dates.
 
 ## v0.9
 
